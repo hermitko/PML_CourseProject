@@ -1,30 +1,146 @@
 ---
 title: "Practical Machine Learning Course Project"
+subtitle: "On the weightlifting exercise classification"
 author: "Jan Herman"
 date: "December 31, 2015"
 output: html_document
+bibliography: reference.bibtex
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## Abstract 
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+In this analysis we aim to classify weightlifting exercises measurements
+into 5 different classes. Each measurement contains data about one particular 
+unilateral dumbbell biceps curl. The class variable corresponds to the way the 
+exercise was done -- class *A* means correctly performed, classes *B*--*E* mean
+different common mistakes. The dataset is publicly available from
+[http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+and described in detail in the original paper [@velloso2013qualitative].
 
-```{r}
+The report consist of four parts -- at first we do a little exploratory analysis,
+then comes the dataset cleaning part. In the third section we describe the
+prediction model creation and estimate its performance. The last part summarizes
+the results.
+
+We have chosen predicting by random forests, since it is a powerfull and robust 
+prediction method. Model accuracy estimated by the 10-fold cross validation is 99.5 %.
+
+## Exploratory analysis
+
+At first we load the R-libraries `dplyr`, `caret` and `ggplot2` used in the entire 
+analysis [see @wickham_francois_2015, @topepo.github.io_2015 and @ggplot2].
+Then we load  the dataset and determine the number of measurements 
+and the number of variables.
+
+```{r message=FALSE}
 library(dplyr)
-pml_train <- read.csv("data/pml-training.csv")
-pml_train_select <- pml_train %>%
+library(caret)
+library(ggplot2)
+
+pml <- read.csv("data/pml-training.csv")
+dim(pml)
+```
+
+When we look at the summary of the dataset (see Apendix part), we see
+that a lot of variables have vast majority of values either blank or NA.
+Let us count those:
+```{r}
+sum(apply(pml, 2, function(x) mean(is.na(x) | x == "")) > .95)
+```
+
+
+So
+`r sum(apply(pml, 2, function(x) mean(is.na(x) | x == "")) > .95)` 
+out of total `r dim(pml)[2]` variables have more than 95 % blank 
+or NA values.
+
+As these variables carry little information, we discard them from
+the further analysis.
+
+## Data preparation
+At first we remove the beforementioned variables with lots of blank values
+together with another variables we consider of little use for classification
+(the variables with timestamps, the ones describing the sliding windows and 
+the variable `X` -- the measurement counter).
+
+```{r message=FALSE}
+pml_selected <- pml %>%
     select(which(
-        apply(pml_train, 2, function(x) sum(is.na(x) | x == "")) < 19000)
+        apply(pml, 2, function(x) mean(is.na(x) | x == "")) <= .95)
         ) %>%
     select(-contains("timestamp"), -contains("window"), -X)
-pml_test <- read.csv("data/pml-testing.csv")
-table(pml_train_select$user_name, pml_train_select$classe)
 ```
 
-You can also embed plots, for example:
+## Classification model
 
-```{r, echo=FALSE}
-plot(cars)
+We use the Random Forest classificator [see @stat.berkeley.edu_2015] through
+`caret` package wrapper [see @topepo.github.io_2015].
+
+
+```{r cache=TRUE}
+set.seed(213)
+
+tr_ctrl <- trainControl(method = "cv", number = 10, savePredictions = "final")
+rf_model <- train(classe ~ ., 
+                  data = pml_selected, 
+                  method = "rf", 
+                  trControl = tr_ctrl)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Let us look on the accuracy of the model. At first a figure of the confusion
+matrix:
+```{r}
+single_freq <- as.data.frame(table(rf_model$pred$obs))
+frequencies <- as.data.frame(table(rf_model$pred$obs, rf_model$pred$pred))
+plot_data <- inner_join(single_freq, frequencies, by = c("Var1" = "Var1")) %>%
+    mutate(Percentage = Freq.y / Freq.x)
+ggplot(data = plot_data,
+       aes(x = Var2, y = factor(Var1, levels(Var2)[5:1]), fill = Percentage)) +
+    geom_tile() +
+    scale_fill_gradient2(low = "white", high = "blue") +
+    geom_text(aes(label = sprintf("%.3f %%", Percentage)), colour="black") +
+    theme_bw() +
+    theme(axis.ticks.x = element_blank(), axis.ticks.y = element_blank()) +
+    scale_x_discrete(expand = c(0, 0)) + 
+    scale_y_discrete(expand = c(0, 0)) + 
+    labs(title = "Confusion matrix", y = "Actual class", 
+         x = "Predicted class", fill = "Percentage") 
+
+```
+
+Looking at overall accuracy:
+
+```{r}
+mean(rf_model$pred$obs == rf_model$pred$pred)
+```
+
+We see, that our prediction model has an accuracy of 
+`r round(mean(rf_model$pred$obs == rf_model$pred$pred) * 100, 1)` %. More 
+detailed summary of the model accuracy can be seen in Appendix section.
+
+## Conclusion
+
+We have built random forest prediction model that predicts the way how the
+exercise was done. The overall accuracy of the predictor was 
+`r round(mean(rf_model$pred$obs == rf_model$pred$pred) * 100, 1)` %.
+
+## Appendix 
+
+Basic summary of the data (mentioned in the Exploratory analysis section):
+
+```{r}
+summary(pml)
+```
+
+Detailed model accuracy and other related statistics:
+
+```{r}
+confusionMatrix(rf_model$pred$pred, rf_model$pred$obs)
+```
+
+## Notice
+This report was done as a Course Project to Practical Machine Learning class on
+[coursera.org](coursera.org) and is available on
+[github](http://hermitko.github.io/PML_CourseProject/).
+
+## References
