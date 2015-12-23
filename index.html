@@ -10,7 +10,7 @@
 
 <meta name="author" content="Jan Herman" />
 
-<meta name="date" content="2015-12-31" />
+<meta name="date" content="2015-12-21" />
 
 <title>Practical Machine Learning Course Project</title>
 
@@ -65,7 +65,7 @@ img {
 <h1 class="title">Practical Machine Learning Course Project</h1>
 <h3 class="subtitle"><em>On the weightlifting exercise classification</em></h3>
 <h4 class="author"><em>Jan Herman</em></h4>
-<h4 class="date"><em>December 31, 2015</em></h4>
+<h4 class="date"><em>December 21, 2015</em></h4>
 </div>
 
 
@@ -85,9 +85,10 @@ library(ggplot2)
 pml &lt;- read.csv(&quot;data/pml-training.csv&quot;)
 dim(pml)</code></pre>
 <pre><code>## [1] 19622   160</code></pre>
+<p>When we look at the summary of the dataset (see Apendix part), we see that a lot of variables have vast majority of values either blank or NA. Let us count those:</p>
 <pre class="r"><code>sum(apply(pml, 2, function(x) mean(is.na(x) | x == &quot;&quot;)) &gt; .95)</code></pre>
 <pre><code>## [1] 100</code></pre>
-<p>We see that the dataset consists of 19622 observations of 160 variables. The brief exploratory analysis shows that 100 out of total 160 variables have more than 95 % blank or NA values (see the Appendix section for the whole summary).</p>
+<p>So 100 out of total 160 variables have more than 95 % blank or NA values.</p>
 <p>As these variables carry little information, we discard them from the further analysis.</p>
 </div>
 <div id="data-preparation" class="section level2">

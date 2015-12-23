@@ -2,7 +2,7 @@
 title: "Practical Machine Learning Course Project"
 subtitle: "On the weightlifting exercise classification"
 author: "Jan Herman"
-date: "December 31, 2015"
+date: "December 21, 2015"
 output: html_document
 bibliography: reference.bibtex
 ---
