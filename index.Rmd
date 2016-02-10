@@ -72,35 +72,35 @@ pml_selected <- pml %>%
 ```
 
 ## Classification models
-We have fitted two different model -- as a baseline, we used one of the
-simplest classification methods -- *k*-Nearest Neighbors. Then we tried more
-complicated model -- the Random Forest classificator 
-[see @stat.berkeley.edu_2015]. Both models were constructed through
+We have fitted two different classes of models. As a baseline we used one of the
+simplest classification methods -- *k*-Nearest Neighbors [see @knn]. Then we 
+tried more complicated models -- the Random Forest classificator 
+[see @stat.berkeley.edu_2015]. Both kinds of models were constructed through
 `caret` package wrapper [see @topepo.github.io_2015].
 
-The accuracies of both models are
-evaluated by means of 5-fold cross validation.
+The accuracies of both classes of models are
+evaluated by means of 10-fold cross validation.
 Even though this is available as an automatized process in the `caret` package,
 we decided to do it "by hand" to be seen clearly what is going on (and what is
 under the hood of the `caret`).
 
-Let us first divide the training dataset into 5 parts. We will train 5 classificator
-of each type on each 4 parts and evaluate the accuracy on the remaining part.
-The mean of these accuracies will be our 5-fold cross validation estimation of
-the final models accuracy.
+Let us first divide the training dataset into 10 parts. We will train 10 classificators
+of each type on 9 dataset parts and evaluate the accuracy on the remaining part.
+The mean of these accuracies will be our 10-fold cross validation estimation of
+the final model accuracy.
 
 ```{r cache=TRUE}
 set.seed(213)
 
-fold_count <- 5
+fold_count <- 10
 folds <- createFolds(pml_selected$classe, k = fold_count)
 ```
 
 ### *k*-Nearest Neighbors
-Now we train the *k*-NN models (with *k* = 10) five times. Each time we train
+Now we train the *k*-NN models (with *k* = 10) ten times. Each time we train
 it on the dataset with one particular fold removed. On this removed fold we 
 later evaluate accuracy of the corresponding model. The final accuracy estimate
-is the mean of these 5 accuracies.
+is the mean of these 10 accuracies.
 
 ```{r cache=TRUE}
 models_knn <- lapply(1:fold_count,
@@ -127,19 +127,20 @@ print(mean(estimated_accuracies_knn))
 ```
 
 Hence we have the baseline accuracy of approximately 
-`r round(estimated_accuracy * 100, 1)` % (pretty good, isnt't it?). To build a 
-little bit better model, we used Random Forests.
+`r round(mean(estimated_accuracies_knn) * 100, 1)` % (pretty good, isnt't it?).
+To build a little bit better model, we used Random Forests.
 
 ### Random Forests
-As before, we train 5 models (each on 4 of 5 folds) and estimate the accuracy
+As before, we train 10 models (each on 9 of 10 folds) and estimate the accuracy
 on the missing fold.
 
-```{r cache=TRUE}
+```{r cache=TRUE, message=FALSE}
 models_rf <- lapply(1:fold_count,
                     function(i){
                         train(classe ~ .,
                         data = pml_selected[-folds[[i]], ],
                         method = "rf", 
+                        tuneGrid = data.frame(mtry = ncol(pml_selected) %/% 2),
                         trControl = trainControl(method = "none"))
                     }
                     )
@@ -155,15 +156,24 @@ estimated_accuracies_rf <-
 print(mean(estimated_accuracies_rf))
 ```
 
-Let us look on the accuracy of the model. At first a figure of the confusion
+That means we achieved an accuracy estimate of (kind of unbelievable) 
+`r round(mean(estimated_accuracies_rf) * 100, 1)` %!
+
+Let us look on the accuracy in more detail. At first a figure of the confusion
 matrix:
-```{r}
-single_freq <- as.data.frame(table(rf_model$pred$obs))
-frequencies <- as.data.frame(table(rf_model$pred$obs, rf_model$pred$pred))
+```{r message=FALSE}
+predictions <- factor(rep_len(c("A", "B", "C", "D", "E"), nrow(pml_selected)))
+for (i in 1:fold_count){
+    predictions[folds[[i]]] <- 
+        predict(models_rf[[i]], newdata = pml_selected[folds[[i]], ])
+}
+
+single_freq <- as.data.frame(table(pml_selected$classe))
+frequencies <- as.data.frame(table(pml_selected$classe, predictions))
 plot_data <- inner_join(single_freq, frequencies, by = c("Var1" = "Var1")) %>%
     mutate(Percentage = Freq.y / Freq.x)
 ggplot(data = plot_data,
-       aes(x = Var2, y = factor(Var1, levels(Var2)[5:1]), fill = Percentage)) +
+       aes(x = predictions, y = factor(Var1, levels(predictions)[5:1]), fill = Percentage)) +
     geom_tile() +
     scale_fill_gradient2(low = "white", high = "blue") +
     geom_text(aes(label = sprintf("%.3f %%", Percentage)), colour="black") +
@@ -176,23 +186,38 @@ ggplot(data = plot_data,
 
 ```
 
-Looking at overall accuracy:
-
-```{r}
-mean(rf_model$pred$obs == rf_model$pred$pred)
-```
-
-We see, that our prediction model has an accuracy of 
-`r round(mean(rf_model$pred$obs == rf_model$pred$pred) * 100, 1)` %. More 
-detailed summary of the model accuracy can be seen in Appendix section.
+More detailed summary of the model accuracy can be seen in Appendix section.
 
 ## Conclusion
 
-We have built random forest prediction model that predicts the way how the
-exercise was done. The overall accuracy of the predictor was 
-`r round(mean(rf_model$pred$obs == rf_model$pred$pred) * 100, 1)` %.
+We have built *k*-NN and random forest prediction models that predict the way how the
+exercise was done. The overall estimated accuracy of the random forest
+predictor was `r round(mean(estimated_accuracies_rf) * 100, 1)` %.
 
 ## Appendix 
+
+### Test data prediction
+
+```{r}
+pml_t <- read.csv("data/pml-testing.csv")
+
+pml_selected_t <- pml_t %>%
+    select(which(
+        apply(pml, 2, function(x) mean(is.na(x) | x == "")) <= .95)
+    ) %>%
+    select(-contains("timestamp"), -contains("window"), -X)
+
+predictions_t <- sapply(1:fold_count, 
+                        function(i){
+                            predict(models_rf[[i]], newdata = pml_selected_t)
+                        }
+                        )
+
+prediction_t <- apply(predictions_t, 
+                      1, 
+                      function(x){names(which.max(table(x)))})
+#prediction_t
+```
 
 Basic summary of the data (mentioned in the Exploratory analysis section):
 
@@ -203,7 +228,7 @@ summary(pml)
 Detailed model accuracy and other related statistics:
 
 ```{r}
-confusionMatrix(rf_model$pred$pred, rf_model$pred$obs)
+confusionMatrix(predictions, pml_selected$classe)
 ```
 
 ## Notice
