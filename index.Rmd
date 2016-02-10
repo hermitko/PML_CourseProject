@@ -2,7 +2,7 @@
 title: "Practical Machine Learning Course Project"
 subtitle: "On the weightlifting exercise classification"
 author: "Jan Herman"
-date: "December 21, 2015"
+date: "February 10, 2015"
 output: html_document
 bibliography: reference.bibtex
 ---
@@ -71,20 +71,88 @@ pml_selected <- pml %>%
     select(-contains("timestamp"), -contains("window"), -X)
 ```
 
-## Classification model
-
-We use the Random Forest classificator [see @stat.berkeley.edu_2015] through
+## Classification models
+We have fitted two different model -- as a baseline, we used one of the
+simplest classification methods -- *k*-Nearest Neighbors. Then we tried more
+complicated model -- the Random Forest classificator 
+[see @stat.berkeley.edu_2015]. Both models were constructed through
 `caret` package wrapper [see @topepo.github.io_2015].
 
+The accuracies of both models are
+evaluated by means of 5-fold cross validation.
+Even though this is available as an automatized process in the `caret` package,
+we decided to do it "by hand" to be seen clearly what is going on (and what is
+under the hood of the `caret`).
+
+Let us first divide the training dataset into 5 parts. We will train 5 classificator
+of each type on each 4 parts and evaluate the accuracy on the remaining part.
+The mean of these accuracies will be our 5-fold cross validation estimation of
+the final models accuracy.
 
 ```{r cache=TRUE}
 set.seed(213)
 
-tr_ctrl <- trainControl(method = "cv", number = 10, savePredictions = "final")
-rf_model <- train(classe ~ ., 
-                  data = pml_selected, 
-                  method = "rf", 
-                  trControl = tr_ctrl)
+fold_count <- 5
+folds <- createFolds(pml_selected$classe, k = fold_count)
+```
+
+### *k*-Nearest Neighbors
+Now we train the *k*-NN models (with *k* = 10) five times. Each time we train
+it on the dataset with one particular fold removed. On this removed fold we 
+later evaluate accuracy of the corresponding model. The final accuracy estimate
+is the mean of these 5 accuracies.
+
+```{r cache=TRUE}
+models_knn <- lapply(1:fold_count,
+                    function(i){
+                        train(classe ~ .,
+                        data = pml_selected[-folds[[i]], ],
+                        method = "knn",
+                        preProcess = c("center","scale"),
+                        tuneGrid = data.frame(k = 10),
+                        trControl = trainControl(method = "none"))
+                    }
+                    )                       
+
+estimated_accuracies_knn <- 
+    sapply(1:fold_count,
+           function(i){
+               mean(predict(models_knn[[i]], newdata = pml_selected[folds[[i]], ]) ==
+                        pml_selected$classe[folds[[i]]])
+           }
+           )
+
+
+print(mean(estimated_accuracies_knn))
+```
+
+Hence we have the baseline accuracy of approximately 
+`r round(estimated_accuracy * 100, 1)` % (pretty good, isnt't it?). To build a 
+little bit better model, we used Random Forests.
+
+### Random Forests
+As before, we train 5 models (each on 4 of 5 folds) and estimate the accuracy
+on the missing fold.
+
+```{r cache=TRUE}
+models_rf <- lapply(1:fold_count,
+                    function(i){
+                        train(classe ~ .,
+                        data = pml_selected[-folds[[i]], ],
+                        method = "rf", 
+                        trControl = trainControl(method = "none"))
+                    }
+                    )
+
+estimated_accuracies_rf <- 
+    sapply(1:fold_count,
+           function(i){
+               mean(predict(models_rf[[i]], newdata = pml_selected[folds[[i]], ]) ==
+                        pml_selected$classe[folds[[i]]])
+           }
+           )
+
+print(mean(estimated_accuracies_rf))
 ```
 
 Let us look on the accuracy of the model. At first a figure of the confusion
